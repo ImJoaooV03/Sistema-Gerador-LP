@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { StatCard } from '@/components/dashboard/stat-card'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
@@ -7,6 +8,8 @@ const QUICK_ACTIONS = [
   { icon: '🎨', title: 'Extrair Design System', desc: 'de página existente',  href: '/design-systems' },
 ]
 
+// Colors mirror design tokens (--color-accent, --color-teal, etc.) — inline hex
+// required here because dynamic Tailwind class interpolation would be purged at build time.
 const LIBRARY_COVERAGE = [
   { label: 'Infoproduto', count: 0, pct: 0, color: '#F0B429' },
   { label: 'SaaS',        count: 0, pct: 0, color: '#00D4AA' },
@@ -37,7 +40,7 @@ export default function DashboardPage() {
             </div>
             <div className="p-3">
               {QUICK_ACTIONS.map((action) => (
-                <a
+                <Link
                   key={action.href}
                   href={action.href}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border-default bg-surface mb-2 last:mb-0 hover:border-accent/35 hover:bg-accent-dim transition-all duration-150 group"
@@ -48,7 +51,7 @@ export default function DashboardPage() {
                     <div className="text-[11px] text-text-3">{action.desc}</div>
                   </div>
                   <span className="text-text-3 text-[11px] group-hover:text-accent transition-colors">→</span>
-                </a>
+                </Link>
               ))}
             </div>
           </div>

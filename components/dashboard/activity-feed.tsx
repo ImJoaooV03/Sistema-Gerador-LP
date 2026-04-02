@@ -16,7 +16,7 @@ const MOCK_ACTIVITY: ActivityItem[] = [
   { id: '5', name: 'LP gerada — Academia de Nutrição',      detail: 'saúde · fitness · GPT-4o',              time: '8h',   status: 'success'    },
 ]
 
-const dotClass: Record<string, string> = {
+const dotClass: Record<ActivityItem['status'], string> = {
   success:    'bg-teal shadow-teal-glow',
   processing: 'bg-accent shadow-accent-glow animate-pulse',
   info:       'bg-blue-lp',
