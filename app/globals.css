@@ -46,6 +46,30 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* ── Sistema LP Design Tokens ── */
+  --color-accent: #F0B429;
+  --color-bg-base: #07090F;
+  --color-surface: #0C1018;
+  --color-elevated: #131A24;
+  --color-overlay: #1A2332;
+  --color-teal: #00D4AA;
+  --color-purple: #A78BFA;
+  --color-blue-lp: #60A5FA;
+  --color-red-lp: #FF4757;
+  --color-text-1: #EDF2F7;
+  --color-text-2: #8896A8;
+  --color-text-3: #4A5568;
+  --color-border-default: #1E2B3C;
+  --color-border-hi: #263648;
+  --color-accent-dim: rgba(240, 180, 41, 0.10);
+  --color-teal-dim: rgba(0, 212, 170, 0.10);
+  --width-sidebar: 224px;
+  --shadow-accent-glow: 0 0 16px rgba(240, 180, 41, 0.22);
+  --shadow-teal-glow: 0 0 6px rgba(0, 212, 170, 0.60);
+  --font-syne: var(--font-syne-var);
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 :root {
@@ -120,11 +144,27 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    box-sizing: border-box;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  html, body {
+    @apply bg-bg-base text-text-1 font-sans;
+    height: 100%;
   }
-  html {
-    @apply font-sans;
+
+  /* Grain overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+    opacity: 0.45;
   }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1E2B3C; border-radius: 2px; }
 }
