@@ -1,0 +1,63 @@
+<h2>Seção 1 — Arquitetura Geral</h2>
+<p class="subtitle">Next.js Monolith + Supabase · Opção A aprovada</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">Visão de Camadas</div>
+    <div class="mockup-body" style="padding: 24px; font-family: monospace; font-size: 13px; line-height: 1.8;">
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; text-align: center; margin-bottom: 24px;">
+        <div style="background: #1e3a5f; border-radius: 8px; padding: 16px; border: 1px solid #2d5a8e;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #7eb8f7; letter-spacing: 1px; margin-bottom: 8px;">Frontend</div>
+          <div style="color: #e2e8f0; font-size: 12px;">Next.js 14 (App Router)<br/>React + TailwindCSS<br/>Shadcn/UI</div>
+        </div>
+        <div style="background: #1a3a2a; border-radius: 8px; padding: 16px; border: 1px solid #2d6e4e;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #6ee7b7; letter-spacing: 1px; margin-bottom: 8px;">API Layer</div>
+          <div style="color: #e2e8f0; font-size: 12px;">Next.js API Routes<br/>Upload · Extração · Geração<br/>Job Status Polling</div>
+        </div>
+        <div style="background: #3a1a1a; border-radius: 8px; padding: 16px; border: 1px solid #7e2d2d;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #fca5a5; letter-spacing: 1px; margin-bottom: 8px;">IA Engine</div>
+          <div style="color: #e2e8f0; font-size: 12px;">Multi-provider<br/>Claude · GPT-4o · outros<br/>Configurável por projeto</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; text-align: center;">
+        <div style="background: #2a1a3a; border-radius: 8px; padding: 16px; border: 1px solid #5a2d7e;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #c4b5fd; letter-spacing: 1px; margin-bottom: 8px;">Supabase DB (Postgres)</div>
+          <div style="color: #e2e8f0; font-size: 12px;">clientes · projetos · referências<br/>design_systems · paginas_geradas<br/>jobs · configuracoes</div>
+        </div>
+        <div style="background: #1a2a3a; border-radius: 8px; padding: 16px; border: 1px solid #2d5a7e;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #93c5fd; letter-spacing: 1px; margin-bottom: 8px;">Supabase Storage</div>
+          <div style="color: #e2e8f0; font-size: 12px;">ZIPs enviados · assets extraídos<br/>design-system.html<br/>index.html · páginas geradas</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 20px; text-align: center; color: #94a3b8; font-size: 12px; border-top: 1px solid #334155; padding-top: 16px;">
+        Deploy: <strong style="color:#e2e8f0;">Vercel</strong> (Next.js) + <strong style="color:#e2e8f0;">Supabase Cloud</strong> · Auth: <strong style="color:#e2e8f0;">Supabase Auth</strong> (email/senha para equipe)
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Fluxo de Jobs Assíncronos</h3>
+  <p class="subtitle">Solução para operações longas (extração de DS + geração de LP)</p>
+  <div class="mockup">
+    <div class="mockup-body" style="padding: 20px; font-size: 13px;">
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #e2e8f0;">
+        <div style="background: #1e3a5f; padding: 8px 14px; border-radius: 6px; border: 1px solid #2d5a8e;">1. Usuário dispara ação</div>
+        <div style="color: #64748b;">→</div>
+        <div style="background: #1a3a2a; padding: 8px 14px; border-radius: 6px; border: 1px solid #2d6e4e;">2. API cria job<br/><span style="font-size:11px; color:#6ee7b7">status: pending</span></div>
+        <div style="color: #64748b;">→</div>
+        <div style="background: #1a3a2a; padding: 8px 14px; border-radius: 6px; border: 1px solid #2d6e4e;">3. Processa<br/><span style="font-size:11px; color:#6ee7b7">status: running</span></div>
+        <div style="color: #64748b;">→</div>
+        <div style="background: #3a1a1a; padding: 8px 14px; border-radius: 6px; border: 1px solid #7e2d2d;">4. Conclui / Falha<br/><span style="font-size:11px; color:#fca5a5">status: done | error</span></div>
+      </div>
+      <div style="margin-top: 12px; color: #64748b; font-size: 12px;">
+        → Frontend faz polling a cada 3s consultando o status do job no Supabase · Sem WebSockets · Simples e confiável
+      </div>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top: 24px; color: #94a3b8; font-size: 13px;">Isso está certo? Posso avançar para o modelo de dados.</p>
