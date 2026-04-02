@@ -30,12 +30,9 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const isLoginPage = request.nextUrl.pathname === '/login'
-  const isPublicAsset =
-    request.nextUrl.pathname.startsWith('/_next') ||
-    request.nextUrl.pathname.startsWith('/favicon')
 
-  if (isPublicAsset) return supabaseResponse
-
+  // TODO: when /api/ routes are introduced, revisit whether unauthenticated
+  // requests should receive a 401 JSON response instead of a 302 redirect.
   if (!user && !isLoginPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
