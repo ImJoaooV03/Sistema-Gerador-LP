@@ -1,6 +1,3 @@
--- Habilitar extensão UUID
-create extension if not exists "uuid-ossp";
-
 -- ── clientes ──────────────────────────────────────────────
 create table clientes (
   id          uuid primary key default gen_random_uuid(),
@@ -12,7 +9,7 @@ create table clientes (
 -- ── projetos ──────────────────────────────────────────────
 create table projetos (
   id          uuid primary key default gen_random_uuid(),
-  cliente_id  uuid references clientes(id) on delete cascade,
+  cliente_id  uuid not null references clientes(id) on delete cascade,
   nome        text not null,
   niche       text not null,
   sub_niche   text not null,
@@ -46,7 +43,7 @@ create table referencias (
 -- ── paginas_geradas ───────────────────────────────────────
 create table paginas_geradas (
   id          uuid primary key default gen_random_uuid(),
-  projeto_id  uuid references projetos(id) on delete cascade,
+  projeto_id  uuid not null references projetos(id) on delete cascade,
   html_output text,
   preview_url text,
   sections    jsonb not null default '[]',

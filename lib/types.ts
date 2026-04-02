@@ -7,7 +7,7 @@ export type Cliente = {
 
 export type Projeto = {
   id: string
-  cliente_id: string | null
+  cliente_id: string
   nome: string
   niche: string
   sub_niche: string
