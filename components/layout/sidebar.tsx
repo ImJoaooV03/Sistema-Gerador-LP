@@ -66,7 +66,7 @@ export function Sidebar() {
               {group.label}
             </div>
             {group.items.map((item) => {
-              const isActive = pathname.startsWith(item.href)
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
               return (
                 <Link
                   key={item.href}
@@ -106,6 +106,7 @@ export function Sidebar() {
             onClick={handleSignOut}
             className="text-text-3 text-[10px] hover:text-text-2 transition-colors"
             title="Sair"
+            aria-label="Sair"
           >
             ⏻
           </button>

@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 
 const PAGE_META: Record<string, { title: string; crumb: string }> = {
   '/dashboard':      { title: 'Dashboard',      crumb: 'visão geral'       },
-  '/projetos':       { title: 'Projetos',        crumb: '0 projetos'        },
+  '/projetos':       { title: 'Projetos',        crumb: 'lista'             },
   '/clientes':       { title: 'Clientes',        crumb: 'gestão'            },
   '/referencias':    { title: 'Referências',     crumb: 'biblioteca'        },
   '/design-systems': { title: 'Design Systems',  crumb: 'biblioteca'        },
@@ -30,6 +30,7 @@ export function Topbar() {
       </span>
       <div className="w-px h-3.5 bg-border-default" />
       <span className="text-[11px] text-text-3 font-mono">{crumb}</span>
+      {/* Portal target: page-level action buttons are injected here by child layouts */}
       <div id="topbar-actions" className="ml-auto flex items-center gap-2" />
     </header>
   )
