@@ -5,6 +5,8 @@ export type Cliente = {
   created_at: string
 }
 
+export type ProjetoStatus = 'rascunho' | 'gerando' | 'concluido'
+
 export type Projeto = {
   id: string
   cliente_id: string
@@ -13,6 +15,7 @@ export type Projeto = {
   sub_niche: string
   page_type: string
   briefing: string | null
+  status: ProjetoStatus
   created_at: string
 }
 
