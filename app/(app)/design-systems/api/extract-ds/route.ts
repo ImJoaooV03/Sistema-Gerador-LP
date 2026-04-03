@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import Anthropic from '@anthropic-ai/sdk'
 import JSZip from 'jszip'
 
@@ -98,8 +99,9 @@ export async function POST(req: NextRequest) {
     }
     id = ds.id
 
-    // Upload ZIP to Storage
-    const { error: storageErr } = await supabase.storage
+    // Upload ZIP to Storage (admin client bypasses RLS)
+    const admin = createAdminClient()
+    const { error: storageErr } = await admin.storage
       .from('design-systems')
       .upload(`${id}.zip`, file, { contentType: 'application/zip', upsert: true })
 
@@ -134,7 +136,7 @@ export async function POST(req: NextRequest) {
     // Call Claude API
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-5',
       max_tokens: 8192,
       messages: [{ role: 'user', content: ANTHROPIC_PROMPT + sourceCode }],
     })

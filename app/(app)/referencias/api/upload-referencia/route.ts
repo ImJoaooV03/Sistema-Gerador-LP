@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import JSZip from 'jszip'
 
 export async function POST(req: NextRequest) {
@@ -53,8 +54,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertErr?.message ?? 'DB error' }, { status: 500 })
     }
 
-    // Upload ZIP
-    const { error: storageErr } = await supabase.storage
+    // Upload ZIP (admin client bypasses RLS)
+    const admin = createAdminClient()
+    const { error: storageErr } = await admin.storage
       .from('referencias')
       .upload(`${ref.id}.zip`, file, { contentType: 'application/zip', upsert: true })
 

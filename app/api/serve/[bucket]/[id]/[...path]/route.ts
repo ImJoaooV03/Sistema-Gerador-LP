@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import JSZip from 'jszip'
 
 // In-memory cache: zipKey → JSZip instance (reused across requests in same lambda)
@@ -50,9 +50,9 @@ export async function GET(
     if (cached && Date.now() - cached.ts < CACHE_TTL) {
       zip = cached.zip
     } else {
-      // Download ZIP from Supabase Storage
-      const supabase = await createClient()
-      const { data, error } = await supabase.storage
+      // Download ZIP from Supabase Storage (admin bypasses RLS on private buckets)
+      const admin = createAdminClient()
+      const { data, error } = await admin.storage
         .from(bucket)
         .download(`${id}.zip`)
 
