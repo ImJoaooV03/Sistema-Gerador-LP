@@ -19,10 +19,15 @@ export type Projeto = {
   created_at: string
 }
 
+export type DsStatus = 'pending' | 'processing' | 'done' | 'error'
+
 export type DesignSystem = {
   id: string
   nome: string
   storage_path: string
+  ds_html: string | null
+  status: DsStatus
+  error_msg: string | null
   created_at: string
 }
 
@@ -31,8 +36,8 @@ export type Referencia = {
   design_system_id: string | null
   nome: string
   niche: string
-  sub_niche: string | null
-  page_type: string | null
+  sub_niche: string
+  page_type: string
   tags: string[]
   observacoes: string | null
   storage_path: string
