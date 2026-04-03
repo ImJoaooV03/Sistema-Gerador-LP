@@ -34,16 +34,17 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const isLoginPage = request.nextUrl.pathname === '/login'
+  const isAuthenticated = !!user
 
   // TODO: when /api/ routes are introduced, revisit whether unauthenticated
   // requests should receive a 401 JSON response instead of a 302 redirect.
-  if (!user && !isLoginPage) {
+  if (!isAuthenticated && !isLoginPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  if (user && isLoginPage) {
+  if (isAuthenticated && isLoginPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
