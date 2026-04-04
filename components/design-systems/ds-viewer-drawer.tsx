@@ -21,15 +21,15 @@ export function DsViewerDrawer({ open, ds, onClose }: DsViewerDrawerProps) {
     URL.revokeObjectURL(url)
   }
 
-  async function downloadZip() {
+  async function downloadBundle() {
     if (!ds) return
-    const res = await fetch(`/api/serve/design-systems/${ds.id}/${ds.id}.zip`)
+    const res = await fetch(`/api/design-systems/${ds.id}/bundle`)
     if (!res.ok) return
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${ds.nome.replace(/\s+/g, '-').toLowerCase()}.zip`
+    a.download = `${ds.nome.replace(/\s+/g, '-').toLowerCase()}-bundle.zip`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -81,7 +81,6 @@ export function DsViewerDrawer({ open, ds, onClose }: DsViewerDrawerProps) {
           <iframe
             srcDoc={ds.ds_html}
             title={`Design System — ${ds.nome}`}
-            sandbox="allow-scripts allow-same-origin"
             className="w-full h-full border-0"
           />
         )}
@@ -102,11 +101,11 @@ export function DsViewerDrawer({ open, ds, onClose }: DsViewerDrawerProps) {
         </button>
         <button
           type="button"
-          onClick={downloadZip}
-          disabled={!ds?.storage_path}
+          onClick={downloadBundle}
+          disabled={!ds?.storage_path || !ds?.ds_html}
           className="h-10 px-4 bg-accent text-bg-base font-syne font-bold text-[12px] tracking-tight rounded-lg hover:brightness-110 hover:shadow-accent-glow transition-all active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          Download .zip completo
+          Download Bundle .zip
         </button>
       </div>
     </Drawer>
