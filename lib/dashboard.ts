@@ -24,10 +24,15 @@ export type CoverageItem = {
   color: string
 }
 
+// Internal type used only during merge/sort
+type ActivityItemWithDate = ActivityItem & { _createdAt: string }
+
 // ── timeAgo ───────────────────────────────────────────────────────────────────
 
 export function timeAgo(date: string): string {
-  const diff = Date.now() - new Date(date).getTime()
+  const ms = new Date(date).getTime()
+  if (isNaN(ms)) return 'agora'
+  const diff = Date.now() - ms
   const min  = Math.floor(diff / 60000)
   if (min < 1)  return 'agora'
   if (min < 60) return `${min}min`
@@ -45,6 +50,10 @@ export async function fetchStats(supabase: SupabaseClient): Promise<DashboardSta
     supabase.from('design_systems').select('*',  { count: 'exact', head: true }),
     supabase.from('paginas_geradas').select('*', { count: 'exact', head: true }),
   ])
+  if (p.error)  throw p.error
+  if (r.error)  throw r.error
+  if (d.error)  throw d.error
+  if (pg.error) throw pg.error
   return {
     projetos:    p.count  ?? 0,
     referencias: r.count  ?? 0,
@@ -73,41 +82,51 @@ export async function fetchActivity(supabase: SupabaseClient): Promise<ActivityI
       .order('created_at', { ascending: false })
       .limit(10),
   ])
+  if (paginasRes.error) throw paginasRes.error
+  if (dsRes.error)      throw dsRes.error
+  if (refsRes.error)    throw refsRes.error
 
-  const items: ActivityItem[] = []
+  const items: ActivityItemWithDate[] = []
 
   for (const p of paginasRes.data ?? []) {
-    const projeto = p.projeto as unknown as { nome: string } | null
+    const projetoRaw = p.projeto
+    const projeto = Array.isArray(projetoRaw) ? projetoRaw[0] : projetoRaw
     items.push({
-      id:     `pagina-${p.id}`,
-      name:   `LP gerada — ${projeto?.nome ?? 'Projeto'}`,
-      detail: `versão ${p.version}`,
-      time:   timeAgo(p.created_at),
-      status: 'success',
+      id:         `pagina-${p.id}`,
+      name:       `LP gerada — ${projeto?.nome ?? 'Projeto'}`,
+      detail:     `versão ${p.version}`,
+      time:       timeAgo(p.created_at),
+      status:     'success',
+      _createdAt: p.created_at,
     })
   }
 
   for (const ds of dsRes.data ?? []) {
     items.push({
-      id:     `ds-${ds.id}`,
-      name:   ds.status === 'processing' ? `Extraindo DS — ${ds.nome}` : `Design System — ${ds.nome}`,
-      detail: ds.status === 'processing' ? 'processando...' : 'extração concluída',
-      time:   timeAgo(ds.created_at),
-      status: ds.status === 'processing' ? 'processing' : 'info',
+      id:         `ds-${ds.id}`,
+      name:       ds.status === 'processing' ? `Extraindo DS — ${ds.nome}` : `Design System — ${ds.nome}`,
+      detail:     ds.status === 'processing' ? 'processando...' : 'extração concluída',
+      time:       timeAgo(ds.created_at),
+      status:     ds.status === 'processing' ? 'processing' : 'info',
+      _createdAt: ds.created_at,
     })
   }
 
   for (const ref of refsRes.data ?? []) {
     items.push({
-      id:     `ref-${ref.id}`,
-      name:   `Nova referência — ${ref.nome}`,
-      detail: `${ref.niche} · ${ref.page_type}`,
-      time:   timeAgo(ref.created_at),
-      status: 'info',
+      id:         `ref-${ref.id}`,
+      name:       `Nova referência — ${ref.nome}`,
+      detail:     `${ref.niche} · ${ref.page_type}`,
+      time:       timeAgo(ref.created_at),
+      status:     'info',
+      _createdAt: ref.created_at,
     })
   }
 
-  return items.slice(0, 15)
+  return items
+    .sort((a, b) => new Date(b._createdAt).getTime() - new Date(a._createdAt).getTime())
+    .slice(0, 15)
+    .map(({ _createdAt: _, ...item }) => item)
 }
 
 // ── fetchCoverage ─────────────────────────────────────────────────────────────
@@ -120,7 +139,8 @@ const FIXED_NICHES: Array<{ label: string; color: string }> = [
 ]
 
 export async function fetchCoverage(supabase: SupabaseClient): Promise<CoverageItem[]> {
-  const { data } = await supabase.from('referencias').select('niche')
+  const { data, error } = await supabase.from('referencias').select('niche')
+  if (error) throw error
   const refs = data ?? []
   const total = refs.length
 

@@ -21,6 +21,10 @@ describe('timeAgo', () => {
     const date = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
     expect(timeAgo(date)).toBe('2d')
   })
+
+  it('returns "agora" for invalid date strings', () => {
+    expect(timeAgo('invalid-date')).toBe('agora')
+  })
 })
 
 describe('fetchStats', () => {
@@ -47,6 +51,15 @@ describe('fetchStats', () => {
     }
     const stats = await fetchStats(mockSupabase as any)
     expect(stats).toEqual({ projetos: 0, referencias: 0, ds: 0, paginas: 0 })
+  })
+
+  it('throws when a Supabase query errors', async () => {
+    const mockSupabase = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockResolvedValue({ count: null, error: { message: 'DB error', code: '500' } }),
+      }),
+    }
+    await expect(fetchStats(mockSupabase as any)).rejects.toEqual({ message: 'DB error', code: '500' })
   })
 })
 
@@ -124,7 +137,7 @@ describe('fetchActivity', () => {
     expect(item!.status).toBe('info')
   })
 
-  it('limits total items to 15 and sorts by time descending', async () => {
+  it('limits total items to 15 and returns most recent first', async () => {
     const makeItem = (id: string, minsAgo: number) => ({
       id,
       nome: `Item ${id}`,
@@ -132,6 +145,7 @@ describe('fetchActivity', () => {
       page_type: 'Vendas',
       created_at: new Date(Date.now() - minsAgo * 60 * 1000).toISOString(),
     })
+    // refs[0] = newest (1 min ago), refs[19] = oldest (20 min ago)
     const refs = Array.from({ length: 20 }, (_, i) => makeItem(`r${i}`, i + 1))
     const mockSupabase = {
       from: vi.fn((table: string) => ({
@@ -145,6 +159,8 @@ describe('fetchActivity', () => {
     }
     const items = await fetchActivity(mockSupabase as any)
     expect(items.length).toBeLessThanOrEqual(15)
+    // Verify the first item is the most recent (r0 = 1 min ago)
+    expect(items[0].id).toBe('ref-r0')
   })
 })
 
@@ -190,5 +206,14 @@ describe('fetchCoverage', () => {
       expect(c.count).toBe(0)
       expect(c.pct).toBe(0)
     })
+  })
+
+  it('throws when referencias query errors', async () => {
+    const mockSupabase = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error', code: '500' } }),
+      }),
+    }
+    await expect(fetchCoverage(mockSupabase as any)).rejects.toEqual({ message: 'DB error', code: '500' })
   })
 })
