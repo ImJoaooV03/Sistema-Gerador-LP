@@ -77,7 +77,7 @@ export async function fetchActivity(supabase: SupabaseClient): Promise<ActivityI
   const items: ActivityItem[] = []
 
   for (const p of paginasRes.data ?? []) {
-    const projeto = p.projeto as { nome: string } | null
+    const projeto = p.projeto as unknown as { nome: string } | null
     items.push({
       id:     `pagina-${p.id}`,
       name:   `LP gerada — ${projeto?.nome ?? 'Projeto'}`,
