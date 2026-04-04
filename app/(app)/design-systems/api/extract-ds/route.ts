@@ -7,6 +7,8 @@ import { getConfiguracoes } from '@/lib/get-configuracoes'
 import { DEFAULT_PROMPT_DS, DEFAULT_MODELO_DS } from '@/lib/defaults'
 import { buildResolvedHtml, stripMarkdown } from '@/lib/ds-resolver'
 
+export const maxDuration = 300 // 5 minutes — required for large ZIPs + Opus
+
 const MAX_SOURCE = 120_000
 
 export async function POST(req: NextRequest) {
@@ -70,7 +72,10 @@ export async function POST(req: NextRequest) {
     const config = await getConfiguracoes()
     const promptDs = config.prompt_ds ?? DEFAULT_PROMPT_DS
     const modeloDs = config.modelo_ds ?? DEFAULT_MODELO_DS
-    const anthropic = new Anthropic({ apiKey: config.anthropic_key ?? process.env.ANTHROPIC_API_KEY })
+    const anthropic = new Anthropic({
+      apiKey: config.anthropic_key ?? process.env.ANTHROPIC_API_KEY,
+      timeout: 5 * 60 * 1000, // 5 minutes
+    })
 
     const stream = anthropic.messages.stream({
       model: modeloDs,
