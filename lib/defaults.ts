@@ -75,9 +75,11 @@ Categorias: Entrance · Hover · Button transitions · Scroll/reveal (somente se
 
 ━━━ SEÇÃO 6: ICONS ━━━
 id="icons"
-APENAS SE ícones existirem no source.
-Grid com todos os ícones, variantes de tamanho, herança de cor. Mesmo markup e classes.
-Se não existirem ícones, OMITA esta seção completamente.
+APENAS SE ícones existirem no source HTML.
+Copie o markup EXATO dos elementos de ícone do source: <svg>, <img src="*.svg">, <i class="...">, <span class="icon-...">.
+NÃO invente SVG paths. NÃO use emojis. NÃO use caracteres Unicode. NÃO crie ícones de memória.
+Se não encontrar um elemento de ícone real no source HTML, OMITA esta seção completamente.
+Mostre cada ícone com seu markup original, variantes de tamanho e como a cor é herdada.
 
 ━━━ FIM ━━━
 Feche </body></html> corretamente.
