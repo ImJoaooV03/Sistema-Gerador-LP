@@ -72,11 +72,12 @@ export async function POST(req: NextRequest) {
     const modeloDs = config.modelo_ds ?? DEFAULT_MODELO_DS
     const anthropic = new Anthropic({ apiKey: config.anthropic_key ?? process.env.ANTHROPIC_API_KEY })
 
-    const message = await anthropic.messages.create({
+    const stream = anthropic.messages.stream({
       model: modeloDs,
       max_tokens: 32000,
       messages: [{ role: 'user', content: promptDs + resolvedHtml }],
     })
+    const message = await stream.finalMessage()
 
     let dsHtml = message.content
       .filter(b => b.type === 'text')
