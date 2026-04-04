@@ -73,3 +73,23 @@ export type Job = {
   error: string | null
   created_at: string
 }
+
+export type Configuracoes = {
+  id: number
+  anthropic_key: string | null
+  openai_key: string | null
+  modelo_ds: string
+  modelo_lp: string
+  prompt_ds: string | null
+  prompt_lp: string | null
+  updated_at: string
+}
+
+export type ConfiguracoesPublic = {
+  anthropic_key_set: boolean
+  openai_key_set: boolean
+  modelo_ds: string
+  modelo_lp: string
+  prompt_ds: string | null
+  prompt_lp: string | null
+}
