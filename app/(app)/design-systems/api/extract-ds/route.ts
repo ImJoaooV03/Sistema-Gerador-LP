@@ -5,11 +5,13 @@ import Anthropic from '@anthropic-ai/sdk'
 import JSZip from 'jszip'
 import { getConfiguracoes } from '@/lib/get-configuracoes'
 import { DEFAULT_PROMPT_DS, DEFAULT_MODELO_DS } from '@/lib/defaults'
+import { buildResolvedHtml, stripMarkdown } from '@/lib/ds-resolver'
+
+const MAX_SOURCE = 120_000
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
 
-  // Auth check
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new NextResponse('Unauthorized', { status: 401 })
 
@@ -27,9 +29,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Arquivo muito grande (máx 50MB)' }, { status: 400 })
     }
 
-    // Validate ZIP contains index.html
     const buffer = await file.arrayBuffer()
     const zip = await JSZip.loadAsync(buffer)
+
     if (!zip.file('index.html')) {
       return NextResponse.json({ error: 'ZIP deve conter index.html na raiz' }, { status: 400 })
     }
@@ -54,55 +56,52 @@ export async function POST(req: NextRequest) {
 
     if (storageErr) throw new Error(`Storage: ${storageErr.message}`)
 
-    // Update storage_path
     await supabase.from('design_systems').update({ storage_path: `${id}.zip` }).eq('id', id)
 
-    // Extract HTML + CSS source for Claude
-    const indexHtml = await zip.file('index.html')!.async('string')
+    // Build fully resolved HTML: CSS inline, JS inline, assets as base64 data URIs
+    let resolvedHtml = await buildResolvedHtml(zip)
 
-    // Extract all .css files referenced in <link> tags
-    const cssLinks = [...indexHtml.matchAll(/<link[^>]+href="([^"]+\.css)"/gi)]
-      .map(m => m[1].replace(/^\//, ''))
-
-    let cssContent = ''
-    for (const cssPath of cssLinks) {
-      const cssFile = zip.file(cssPath)
-      if (cssFile) {
-        cssContent += `\n/* === ${cssPath} === */\n`
-        cssContent += await cssFile.async('string')
-      }
+    // Cap to stay within Claude's context window
+    if (resolvedHtml.length > MAX_SOURCE) {
+      resolvedHtml = resolvedHtml.slice(0, MAX_SOURCE) + '\n\n<!-- [truncado por tamanho] -->'
     }
 
-    // Extract inline <style> blocks
-    const styleBlocks = [...indexHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
-      .map(m => m[1])
-      .join('\n')
-
-    const sourceCode = `${indexHtml}\n\n/* External CSS */\n${cssContent}\n\n/* Inline Styles */\n${styleBlocks}`
-
-    // Call Claude API
+    // Call Claude
     const config = await getConfiguracoes()
     const promptDs = config.prompt_ds ?? DEFAULT_PROMPT_DS
     const modeloDs = config.modelo_ds ?? DEFAULT_MODELO_DS
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const anthropic = new Anthropic({ apiKey: config.anthropic_key ?? process.env.ANTHROPIC_API_KEY })
+
     const message = await anthropic.messages.create({
       model: modeloDs,
-      max_tokens: 8192,
-      messages: [{ role: 'user', content: promptDs + sourceCode }],
+      max_tokens: 32000,
+      messages: [{ role: 'user', content: promptDs + resolvedHtml }],
     })
 
-    const dsHtml = message.content
+    let dsHtml = message.content
       .filter(b => b.type === 'text')
       .map(b => (b as { type: 'text'; text: string }).text)
       .join('')
 
-    // Save ds_html + mark done
+    dsHtml = stripMarkdown(dsHtml)
+
+    // Close unclosed tags if truncated
+    if (message.stop_reason === 'max_tokens') {
+      if (!dsHtml.includes('</body>')) {
+        if (dsHtml.includes('<style') && !dsHtml.includes('</style>')) {
+          dsHtml += '\n</style>'
+        }
+        dsHtml += '\n</body></html>'
+      }
+    }
+
     await supabase
       .from('design_systems')
       .update({ ds_html: dsHtml, status: 'done' })
       .eq('id', id)
 
     return NextResponse.json({ id, status: 'done', ds_html: dsHtml })
+
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     if (id) {
