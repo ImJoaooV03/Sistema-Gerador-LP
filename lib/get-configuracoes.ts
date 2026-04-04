@@ -4,11 +4,13 @@ import { DEFAULT_MODELO_DS, DEFAULT_MODELO_LP } from '@/lib/defaults'
 
 export async function getConfiguracoes(): Promise<Configuracoes> {
   const admin = createAdminClient()
-  const { data } = await admin
+  const { data, error } = await admin
     .from('configuracoes')
     .select('*')
     .eq('id', 1)
     .single()
+
+  if (error) console.error('[getConfiguracoes]', error)
 
   return data ?? {
     id: 1,
