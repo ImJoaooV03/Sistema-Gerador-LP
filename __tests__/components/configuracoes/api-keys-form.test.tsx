@@ -18,7 +18,7 @@ describe('ApiKeysForm', () => {
 
   it('shows teal badge when key is set', () => {
     render(<ApiKeysForm anthropicKeySet={true} openaiKeySet={false} />)
-    expect(screen.getByText(/configurada/i)).toBeInTheDocument()
+    expect(screen.getByText(/✓ configurada/i)).toBeInTheDocument()
     expect(screen.getByText(/não configurada/i)).toBeInTheDocument()
   })
 
