@@ -9,30 +9,43 @@ type DsUploadModalProps = {
   onUpload: (id: string, dsHtml: string) => void
 }
 
+type Step = 'form' | 'success'
+
 const inputClass =
   'w-full h-11 bg-elevated border border-border-default rounded-lg px-4 text-[13px] text-text-1 placeholder:text-text-3 font-mono outline-none transition-all duration-200 focus:border-accent/50 focus:shadow-[0_0_0_3px_rgba(240,180,41,0.09)]'
 
 const labelClass = 'text-[9px] uppercase tracking-[2.5px] text-text-3 font-mono'
 
 export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
+  const [step,     setStep]     = useState<Step>('form')
   const [nome,     setNome]     = useState('')
   const [file,     setFile]     = useState<File | null>(null)
   const [loading,  setLoading]  = useState(false)
   const [progress, setProgress] = useState(0)
   const [error,    setError]    = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [resultId,   setResultId]   = useState('')
+  const [resultHtml, setResultHtml] = useState('')
+  const [resultNome, setResultNome] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   function reset() {
+    setStep('form')
     setNome('')
     setFile(null)
     setLoading(false)
     setProgress(0)
     setError(null)
     setDragOver(false)
+    setResultId('')
+    setResultHtml('')
+    setResultNome('')
   }
 
   function handleClose() {
+    if (step === 'success') {
+      onUpload(resultId, resultHtml)
+    }
     reset()
     onClose()
   }
@@ -47,6 +60,30 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
     setDragOver(false)
     const f = e.dataTransfer.files[0]
     if (f) handleFile(f)
+  }
+
+  function downloadHtml() {
+    if (!resultHtml) return
+    const blob = new Blob([resultHtml], { type: 'text/html' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `${resultNome.replace(/\s+/g, '-').toLowerCase()}-design-system.html`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function downloadBundle() {
+    if (!resultId) return
+    const res = await fetch(`/api/design-systems/${resultId}/bundle`)
+    if (!res.ok) return
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `${resultNome.replace(/\s+/g, '-').toLowerCase()}-bundle.zip`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -69,8 +106,11 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
       const json = await res.json()
       if (!res.ok) { setError(json.error ?? 'Erro ao extrair'); setLoading(false); setProgress(0); return }
       setProgress(100)
-      onUpload(json.id, json.ds_html)
-      reset()
+      setResultId(json.id)
+      setResultHtml(json.ds_html ?? '')
+      setResultNome(nome.trim())
+      setStep('success')
+      setLoading(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado')
       setLoading(false)
@@ -78,6 +118,96 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
     }
   }
 
+  // ── SUCCESS STEP ────────────────────────────────────────────────────────────
+  if (step === 'success') {
+    return (
+      <Modal open={open} onClose={handleClose} className="w-[92vw] max-w-[1100px] mx-4 h-[88vh]">
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div
+            className="flex-shrink-0 flex items-center justify-between px-6 py-4"
+            style={{ borderBottom: '1px solid #1E2B3C' }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-[13px]"
+                style={{ background: 'rgba(0,212,170,0.12)', border: '1px solid rgba(0,212,170,0.2)' }}
+              >
+                ✓
+              </div>
+              <div>
+                <h2 className="font-syne font-bold text-[15px] text-text-1">{resultNome}</h2>
+                <p className="font-mono text-[9px] text-[#00D4AA] uppercase tracking-[1.5px] mt-0.5">
+                  Design system extraído com sucesso
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleClose}
+              aria-label="Fechar"
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-border-default text-text-3 hover:border-border-hi hover:text-text-1 transition-all text-[13px]"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Preview iframe */}
+          <div className="flex-1 overflow-hidden relative" style={{ minHeight: 0 }}>
+            {resultHtml ? (
+              <iframe
+                srcDoc={resultHtml}
+                title={`Design System — ${resultNome}`}
+                className="w-full h-full border-0"
+                style={{ background: '#020617' }}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-text-3 font-mono text-[12px]">
+                Sem preview disponível
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div
+            className="flex-shrink-0 flex items-center justify-between px-6 py-4"
+            style={{ borderTop: '1px solid #1E2B3C' }}
+          >
+            <p className="font-mono text-[10px] text-text-3">
+              O design system foi salvo e já aparece na lista.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={downloadHtml}
+                className="h-9 px-4 text-[12px] font-medium text-text-2 border border-border-default rounded-lg hover:border-border-hi hover:text-text-1 transition-all font-mono flex items-center gap-2"
+              >
+                <span className="text-[11px]">⬇</span>
+                Download .html
+              </button>
+              <button
+                type="button"
+                onClick={downloadBundle}
+                disabled={!resultId}
+                className="h-9 px-4 text-[12px] font-medium text-text-2 border border-border-default rounded-lg hover:border-border-hi hover:text-text-1 transition-all font-mono flex items-center gap-2 disabled:opacity-30"
+              >
+                <span className="text-[11px]">⬇</span>
+                Bundle .zip
+              </button>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="h-9 px-5 bg-accent text-bg-base font-syne font-bold text-[12px] tracking-tight rounded-lg hover:brightness-110 hover:shadow-accent-glow transition-all"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+    )
+  }
+
+  // ── FORM STEP ───────────────────────────────────────────────────────────────
   return (
     <Modal open={open} onClose={handleClose} className="max-w-[420px] mx-4">
       {/* Header */}
