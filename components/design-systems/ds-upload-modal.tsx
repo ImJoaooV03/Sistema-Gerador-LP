@@ -95,37 +95,63 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
     setError(null)
     setProgress(10)
 
-    const fd = new FormData()
-    fd.append('file', file)
-    fd.append('nome', nome.trim())
-
     try {
-      setProgress(30)
-      const res = await fetch('/design-systems/api/extract-ds', { method: 'POST', body: fd })
+      // Step 1: init — create DB record + get signed upload URL
+      const initRes = await fetch('/api/design-systems/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nome.trim() }),
+      })
+      const initText = await initRes.text()
+      let initJson: { error?: string; id?: string; uploadUrl?: string } = {}
+      try { initJson = JSON.parse(initText) } catch {
+        setError(`Erro ${initRes.status}: ${initText.slice(0, 120)}`)
+        setLoading(false); setProgress(0); return
+      }
+      if (!initRes.ok) { setError(initJson.error ?? 'Erro ao inicializar'); setLoading(false); setProgress(0); return }
+
+      const { id: dsId, uploadUrl } = initJson as { id: string; uploadUrl: string }
+
+      // Step 2: upload file directly to Supabase Storage via signed URL (bypasses Vercel limit)
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', uploadUrl)
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            const pct = 30 + Math.round((ev.loaded / ev.total) * 40)
+            setProgress(pct)
+          }
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`Upload falhou: ${xhr.status} ${xhr.responseText.slice(0, 120)}`))
+        }
+        xhr.onerror = () => reject(new Error('Erro de rede ao enviar arquivo'))
+        xhr.send(file)
+      })
+
+      setProgress(75)
+
+      // Step 3: trigger Claude extraction (server downloads ZIP from storage)
+      const extractRes = await fetch(`/api/design-systems/${dsId}/extract`, { method: 'POST' })
       setProgress(90)
 
-      // Read as text first — a 413 from Vercel is plain text, not JSON
-      const text = await res.text()
-      let json: { error?: string; id?: string; ds_html?: string } = {}
-      try {
-        json = JSON.parse(text)
-      } catch {
-        const msg = res.status === 413
-          ? 'Arquivo muito grande para o servidor (máx. 4MB). Comprime o ZIP ou remove imagens grandes.'
-          : `Erro ${res.status}: ${text.slice(0, 120)}`
-        setError(msg)
-        setLoading(false)
-        setProgress(0)
-        return
+      const extractText = await extractRes.text()
+      let extractJson: { error?: string; id?: string; ds_html?: string } = {}
+      try { extractJson = JSON.parse(extractText) } catch {
+        setError(`Erro ${extractRes.status}: ${extractText.slice(0, 120)}`)
+        setLoading(false); setProgress(0); return
       }
+      if (!extractRes.ok) { setError(extractJson.error ?? 'Erro ao extrair'); setLoading(false); setProgress(0); return }
 
-      if (!res.ok) { setError(json.error ?? 'Erro ao extrair'); setLoading(false); setProgress(0); return }
       setProgress(100)
-      setResultId(json.id)
-      setResultHtml(json.ds_html ?? '')
+      setResultId(extractJson.id ?? dsId)
+      setResultHtml(extractJson.ds_html ?? '')
       setResultNome(nome.trim())
       setStep('success')
       setLoading(false)
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado')
       setLoading(false)
@@ -295,7 +321,7 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
                 Arraste o ZIP aqui ou clique para selecionar
               </p>
             )}
-            <p className="font-mono text-[10px] text-text-3 opacity-50">Máx. 4MB</p>
+            <p className="font-mono text-[10px] text-text-3 opacity-50">Máx. 500MB</p>
           </div>
         </div>
 
