@@ -8,7 +8,7 @@ import { buildAnalysisHtmlFromUrl, stripMarkdown } from '@/lib/ds-resolver'
 
 export const maxDuration = 300
 
-const MAX_SOURCE = 60_000
+const MAX_SOURCE = 40_000
 const SOFT_DEADLINE_MS = 255_000 // 255s — leaves 45s buffer before the 300s hard kill
 
 function raceTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
@@ -44,10 +44,13 @@ async function runExtractionFromUrl(id: string, url: string) {
       timeout: remainingMs,
     })
 
+    // Prepend a compact-output instruction so Claude doesn't bloat <head> CSS
+    // before writing any <body> content (URL sources have less resolved assets)
+    const compactHint = 'IMPORTANTE: O HTML de saída deve ser compacto. Defina variáveis CSS em :root uma única vez e use-as. Não repita valores hex literalmente. Priorize gerar o conteúdo <body> completo antes de estilos auxiliares.\n\n'
     const stream = anthropic.messages.stream({
       model: modeloDs,
-      max_tokens: 16000,
-      messages: [{ role: 'user', content: promptDs + analysisHtml }],
+      max_tokens: 24000,
+      messages: [{ role: 'user', content: compactHint + promptDs + analysisHtml }],
     })
     const message = await raceTimeout(
       stream.finalMessage(),
