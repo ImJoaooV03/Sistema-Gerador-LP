@@ -15,27 +15,27 @@ const base: DesignSystem = {
 
 describe('DsCard', () => {
   it('renders name', () => {
-    render(<DsCard ds={base} onClick={vi.fn()} />)
+    render(<DsCard ds={base} onClick={vi.fn()} onDelete={vi.fn()} />)
     expect(screen.getByText('Meu Design System')).toBeInTheDocument()
   })
 
   it('renders Aguardando for pending status', () => {
-    render(<DsCard ds={base} onClick={vi.fn()} />)
+    render(<DsCard ds={base} onClick={vi.fn()} onDelete={vi.fn()} />)
     expect(screen.getByText('Aguardando')).toBeInTheDocument()
   })
 
   it('renders Extraindo for processing status', () => {
-    render(<DsCard ds={{ ...base, status: 'processing' }} onClick={vi.fn()} />)
-    expect(screen.getByText('Extraindo...')).toBeInTheDocument()
+    render(<DsCard ds={{ ...base, status: 'processing' }} onClick={vi.fn()} onDelete={vi.fn()} />)
+    expect(screen.getByText('Extraindo')).toBeInTheDocument()
   })
 
   it('renders Concluído for done status', () => {
-    render(<DsCard ds={{ ...base, status: 'done', ds_html: '<html/>' }} onClick={vi.fn()} />)
+    render(<DsCard ds={{ ...base, status: 'done', ds_html: '<html/>' }} onClick={vi.fn()} onDelete={vi.fn()} />)
     expect(screen.getByText('Concluído')).toBeInTheDocument()
   })
 
   it('renders Erro for error status', () => {
-    render(<DsCard ds={{ ...base, status: 'error', error_msg: 'falhou' }} onClick={vi.fn()} />)
+    render(<DsCard ds={{ ...base, status: 'error', error_msg: 'falhou' }} onClick={vi.fn()} onDelete={vi.fn()} />)
     expect(screen.getByText('Erro')).toBeInTheDocument()
   })
 
