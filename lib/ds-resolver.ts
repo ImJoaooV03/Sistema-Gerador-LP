@@ -187,7 +187,9 @@ export async function buildAnalysisHtmlFromUrl(url: string): Promise<string> {
 
   let html = await pageRes.text()
 
-  // Inline linked CSS files
+  // Inline linked CSS files — cap each file at 40k chars to avoid bloating Claude's context
+  // (Tailwind/framework utilities can be 500KB+; design tokens are always near the top)
+  const CSS_PER_FILE_LIMIT = 40_000
   const linkRe = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>|<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi
   const matches = [...html.matchAll(linkRe)]
   for (const match of matches) {
@@ -197,7 +199,10 @@ export async function buildAnalysisHtmlFromUrl(url: string): Promise<string> {
       const cssUrl = href.startsWith('http') ? href : `${origin}${href.startsWith('/') ? '' : '/'}${href}`
       const cssRes = await fetch(cssUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
       if (cssRes.ok) {
-        const cssContent = await cssRes.text()
+        let cssContent = await cssRes.text()
+        if (cssContent.length > CSS_PER_FILE_LIMIT) {
+          cssContent = cssContent.slice(0, CSS_PER_FILE_LIMIT) + '\n/* [truncado — arquivo muito grande] */'
+        }
         html = html.replace(match[0], `<style>${cssContent}</style>`)
       }
     } catch {
