@@ -9,12 +9,26 @@ import { buildAnalysisHtmlFromUrl, stripMarkdown } from '@/lib/ds-resolver'
 export const maxDuration = 300
 
 const MAX_SOURCE = 200_000
+const SOFT_DEADLINE_MS = 255_000 // 255s — leaves 45s buffer before the 300s hard kill
+
+function raceTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
+  let t: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    t = setTimeout(() => reject(new Error(msg)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t!))
+}
 
 async function runExtractionFromUrl(id: string, url: string) {
   const admin = createAdminClient()
+  const start = Date.now()
 
   try {
-    let analysisHtml = await buildAnalysisHtmlFromUrl(url)
+    let analysisHtml = await raceTimeout(
+      buildAnalysisHtmlFromUrl(url),
+      60_000,
+      'Timeout ao buscar CSS da página (> 60s)',
+    )
     if (analysisHtml.length > MAX_SOURCE) {
       analysisHtml = analysisHtml.slice(0, MAX_SOURCE) + '\n\n<!-- [truncado por tamanho] -->'
     }
@@ -22,9 +36,12 @@ async function runExtractionFromUrl(id: string, url: string) {
     const config = await getConfiguracoes()
     const promptDs = config.prompt_ds ?? DEFAULT_PROMPT_DS
     const modeloDs = config.modelo_ds ?? DEFAULT_MODELO_DS
+    const remainingMs = SOFT_DEADLINE_MS - (Date.now() - start)
+    if (remainingMs < 10_000) throw new Error('Tempo insuficiente para análise do Claude')
+
     const anthropic = new Anthropic({
       apiKey: config.anthropic_key ?? process.env.ANTHROPIC_API_KEY,
-      timeout: 5 * 60 * 1000,
+      timeout: remainingMs,
     })
 
     const stream = anthropic.messages.stream({
@@ -32,7 +49,11 @@ async function runExtractionFromUrl(id: string, url: string) {
       max_tokens: 32000,
       messages: [{ role: 'user', content: promptDs + analysisHtml }],
     })
-    const message = await stream.finalMessage()
+    const message = await raceTimeout(
+      stream.finalMessage(),
+      remainingMs,
+      'Timeout na análise do Claude (> 255s)',
+    )
 
     let dsHtml = message.content
       .filter(b => b.type === 'text')
