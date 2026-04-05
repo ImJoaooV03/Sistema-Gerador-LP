@@ -29,6 +29,8 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
   const [resultNome, setResultNome] = useState('')
   const [processingId,   setProcessingId]   = useState('')
   const [processingNome, setProcessingNome] = useState('')
+  const [activeTab, setActiveTab] = useState<'url' | 'zip'>('url')
+  const [url,       setUrl]       = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   // ── Polling when in processing step ────────────────────────────────────────
@@ -65,7 +67,6 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
           setStep('form')
           setLoading(false)
         } else {
-          // still processing — poll again
           setTimeout(poll, POLL_INTERVAL)
         }
       } catch {
@@ -90,6 +91,8 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
     setResultNome('')
     setProcessingId('')
     setProcessingNome('')
+    setActiveTab('url')
+    setUrl('')
   }
 
   function handleClose() {
@@ -115,12 +118,11 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
   function downloadHtml() {
     if (!resultHtml) return
     const blob = new Blob([resultHtml], { type: 'text/html' })
-    const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
-    a.href     = url
+    a.href     = URL.createObjectURL(blob)
     a.download = `${resultNome.replace(/\s+/g, '-').toLowerCase()}-design-system.html`
     a.click()
-    URL.revokeObjectURL(url)
+    URL.revokeObjectURL(a.href)
   }
 
   async function downloadBundle() {
@@ -128,78 +130,102 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
     const res = await fetch(`/api/design-systems/${resultId}/bundle`)
     if (!res.ok) return
     const blob = await res.blob()
-    const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
-    a.href     = url
+    a.href     = URL.createObjectURL(blob)
     a.download = `${resultNome.replace(/\s+/g, '-').toLowerCase()}-bundle.zip`
     a.click()
-    URL.revokeObjectURL(url)
+    URL.revokeObjectURL(a.href)
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!nome.trim()) { setError('Nome é obrigatório'); return }
-    if (!file)        { setError('Selecione um arquivo ZIP'); return }
 
     setLoading(true)
     setError(null)
     setProgress(10)
 
     try {
-      // Step 1: init — create DB record + get signed upload URL
-      const initRes = await fetch('/api/design-systems/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: nome.trim() }),
-      })
-      const initText = await initRes.text()
-      let initJson: { error?: string; id?: string; uploadUrl?: string } = {}
-      try { initJson = JSON.parse(initText) } catch {
-        setError(`Erro ${initRes.status}: ${initText.slice(0, 120)}`)
-        setLoading(false); setProgress(0); return
-      }
-      if (!initRes.ok) { setError(initJson.error ?? 'Erro ao inicializar'); setLoading(false); setProgress(0); return }
+      if (activeTab === 'url') {
+        // ── URL path ──────────────────────────────────────────────────────────
+        const trimmedUrl = url.trim()
+        if (!trimmedUrl) { setError('URL é obrigatória'); setLoading(false); setProgress(0); return }
+        if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+          setError('URL deve começar com http:// ou https://'); setLoading(false); setProgress(0); return
+        }
 
-      const { id: dsId, uploadUrl } = initJson as { id: string; uploadUrl: string }
+        const res = await fetch('/api/design-systems/from-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome: nome.trim(), url: trimmedUrl }),
+        })
+        setProgress(90)
 
-      // Step 2: upload file directly to Supabase Storage via signed URL (bypasses Vercel limit)
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('PUT', uploadUrl)
-        xhr.setRequestHeader('Content-Type', 'application/octet-stream')
-        xhr.upload.onprogress = (ev) => {
-          if (ev.lengthComputable) {
-            const pct = 30 + Math.round((ev.loaded / ev.total) * 40)
-            setProgress(pct)
+        const text = await res.text()
+        let json: { error?: string; id?: string } = {}
+        try { json = JSON.parse(text) } catch {
+          setError(`Erro ${res.status}: ${text.slice(0, 120)}`); setLoading(false); setProgress(0); return
+        }
+        if (!res.ok) { setError(json.error ?? 'Erro ao iniciar extração'); setLoading(false); setProgress(0); return }
+
+        setProgress(100)
+        setProcessingId(json.id ?? '')
+        setProcessingNome(nome.trim())
+        setStep('processing')
+
+      } else {
+        // ── ZIP path ──────────────────────────────────────────────────────────
+        if (!file) { setError('Selecione um arquivo ZIP'); setLoading(false); setProgress(0); return }
+
+        const initRes = await fetch('/api/design-systems/init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome: nome.trim() }),
+        })
+        const initText = await initRes.text()
+        let initJson: { error?: string; id?: string; uploadUrl?: string } = {}
+        try { initJson = JSON.parse(initText) } catch {
+          setError(`Erro ${initRes.status}: ${initText.slice(0, 120)}`); setLoading(false); setProgress(0); return
+        }
+        if (!initRes.ok) { setError(initJson.error ?? 'Erro ao inicializar'); setLoading(false); setProgress(0); return }
+
+        const { id: dsId, uploadUrl } = initJson as { id: string; uploadUrl: string }
+
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.open('PUT', uploadUrl)
+          xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+          xhr.upload.onprogress = (ev) => {
+            if (ev.lengthComputable) {
+              const pct = 30 + Math.round((ev.loaded / ev.total) * 40)
+              setProgress(pct)
+            }
           }
-        }
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve()
-          else reject(new Error(`Upload falhou: ${xhr.status} ${xhr.responseText.slice(0, 120)}`))
-        }
-        xhr.onerror = () => reject(new Error('Erro de rede ao enviar arquivo'))
-        xhr.send(file)
-      })
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve()
+            else reject(new Error(`Upload falhou: ${xhr.status} ${xhr.responseText.slice(0, 120)}`))
+          }
+          xhr.onerror = () => reject(new Error('Erro de rede ao enviar arquivo'))
+          xhr.send(file)
+        })
 
-      setProgress(90)
+        setProgress(75)
 
-      // Step 3: trigger Claude extraction — returns 202 immediately
-      const extractRes = await fetch(`/api/design-systems/${dsId}/extract`, { method: 'POST' })
-      if (!extractRes.ok) {
-        const t = await extractRes.text()
-        let j: { error?: string } = {}
-        try { j = JSON.parse(t) } catch { /* ignore */ }
-        setError(j.error ?? `Erro ${extractRes.status}`)
-        setLoading(false); setProgress(0); return
+        const extractRes = await fetch(`/api/design-systems/${dsId}/extract`, { method: 'POST' })
+        setProgress(90)
+
+        const extractText = await extractRes.text()
+        let extractJson: { error?: string; id?: string } = {}
+        try { extractJson = JSON.parse(extractText) } catch {
+          setError(`Erro ${extractRes.status}: ${extractText.slice(0, 120)}`); setLoading(false); setProgress(0); return
+        }
+        if (!extractRes.ok) { setError(extractJson.error ?? 'Erro ao extrair'); setLoading(false); setProgress(0); return }
+
+        setProgress(100)
+        setProcessingId(extractJson.id ?? dsId)
+        setProcessingNome(nome.trim())
+        setStep('processing')
       }
-
-      setProgress(100)
-
-      // Switch to polling step
-      setProcessingId(dsId)
-      setProcessingNome(nome.trim())
-      setStep('processing')
-
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado')
       setLoading(false)
@@ -210,9 +236,8 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
   // ── PROCESSING STEP ─────────────────────────────────────────────────────────
   if (step === 'processing') {
     return (
-      <Modal open={open} onClose={() => { /* prevent accidental close */ }} className="max-w-[420px] mx-4">
+      <Modal open={open} onClose={() => {}} className="max-w-[420px] mx-4">
         <div className="px-6 py-10 flex flex-col items-center gap-5">
-          {/* Spinner */}
           <div className="relative w-14 h-14">
             <div className="absolute inset-0 rounded-full border-2 border-border-default" />
             <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-accent animate-spin" />
@@ -236,7 +261,6 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
     return (
       <Modal open={open} onClose={handleClose} className="w-[92vw] max-w-[1100px] mx-4 h-[88vh]">
         <div className="flex flex-col h-full">
-          {/* Header */}
           <div
             className="flex-shrink-0 flex items-center justify-between px-6 py-4"
             style={{ borderBottom: '1px solid #1E2B3C' }}
@@ -264,7 +288,6 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
             </button>
           </div>
 
-          {/* Preview iframe */}
           <div className="flex-1 overflow-hidden relative" style={{ minHeight: 0 }}>
             {resultHtml ? (
               <iframe
@@ -280,7 +303,6 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
             )}
           </div>
 
-          {/* Footer */}
           <div
             className="flex-shrink-0 flex items-center justify-between px-6 py-4"
             style={{ borderTop: '1px solid #1E2B3C' }}
@@ -331,7 +353,7 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
         <div>
           <h2 className="font-syne font-bold text-[16px] text-text-1">Novo Design System</h2>
           <p className="font-mono text-[10px] text-text-3 mt-0.5 uppercase tracking-[1.5px]">
-            Upload de ZIP para extração
+            Extrair de URL ou ZIP
           </p>
         </div>
         <button
@@ -345,6 +367,27 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
 
       {/* Body */}
       <form id="ds-upload-form" onSubmit={handleSubmit} className="px-6 py-6 flex flex-col gap-5">
+
+        {/* Tab switcher */}
+        <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'rgba(19,26,36,0.8)', border: '1px solid #1E2B3C' }}>
+          {(['url', 'zip'] as const).map(tab => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => { setActiveTab(tab); setError(null) }}
+              disabled={loading}
+              className="flex-1 h-8 rounded-md font-mono text-[11px] uppercase tracking-[1.5px] transition-all"
+              style={{
+                background: activeTab === tab ? 'rgba(240,180,41,0.1)' : 'transparent',
+                border: activeTab === tab ? '1px solid rgba(240,180,41,0.3)' : '1px solid transparent',
+                color: activeTab === tab ? '#F0B429' : '#64748B',
+              }}
+            >
+              {tab === 'url' ? 'URL' : 'ZIP'}
+            </button>
+          ))}
+        </div>
+
         {/* Nome */}
         <div className="flex flex-col gap-1.5">
           <label htmlFor="ds-nome" className={labelClass}>
@@ -361,41 +404,62 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
           />
         </div>
 
-        {/* Drag & drop */}
-        <div className="flex flex-col gap-1.5">
-          <span className={labelClass}>
-            Arquivo ZIP <span className="text-accent">*</span>
-          </span>
-          <div
-            className="relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 cursor-pointer transition-all duration-200"
-            style={{
-              borderColor: dragOver ? '#F0B429' : '#1E2B3C',
-              background: dragOver ? 'rgba(240,180,41,0.04)' : 'rgba(19,26,36,0.5)',
-            }}
-            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            onClick={() => !loading && inputRef.current?.click()}
-          >
+        {activeTab === 'url' ? (
+          /* URL field */
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ds-url" className={labelClass}>
+              URL da página <span className="text-accent">*</span>
+            </label>
             <input
-              ref={inputRef}
-              type="file"
-              accept=".zip"
-              className="hidden"
-              onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
+              id="ds-url"
+              type="url"
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder="https://exemplo.com"
+              className={inputClass}
               disabled={loading}
             />
-            <div className="text-[20px] opacity-50">⬆</div>
-            {file ? (
-              <p className="font-mono text-[12px] text-accent text-center">{file.name}</p>
-            ) : (
-              <p className="font-mono text-[11px] text-text-3 text-center">
-                Arraste o ZIP aqui ou clique para selecionar
-              </p>
-            )}
-            <p className="font-mono text-[10px] text-text-3 opacity-50">Máx. 500MB</p>
+            <p className="font-mono text-[10px] text-text-3 opacity-60">
+              A página deve ser pública e acessível sem login.
+            </p>
           </div>
-        </div>
+        ) : (
+          /* ZIP drag & drop */
+          <div className="flex flex-col gap-1.5">
+            <span className={labelClass}>
+              Arquivo ZIP <span className="text-accent">*</span>
+            </span>
+            <div
+              className="relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 cursor-pointer transition-all duration-200"
+              style={{
+                borderColor: dragOver ? '#F0B429' : '#1E2B3C',
+                background: dragOver ? 'rgba(240,180,41,0.04)' : 'rgba(19,26,36,0.5)',
+              }}
+              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => !loading && inputRef.current?.click()}
+            >
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".zip"
+                className="hidden"
+                onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
+                disabled={loading}
+              />
+              <div className="text-[20px] opacity-50">⬆</div>
+              {file ? (
+                <p className="font-mono text-[12px] text-accent text-center">{file.name}</p>
+              ) : (
+                <p className="font-mono text-[11px] text-text-3 text-center">
+                  Arraste o ZIP aqui ou clique para selecionar
+                </p>
+              )}
+              <p className="font-mono text-[10px] text-text-3 opacity-50">Máx. 500MB</p>
+            </div>
+          </div>
+        )}
 
         {/* Progress bar */}
         {loading && (
@@ -438,10 +502,10 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
           {loading ? (
             <span className="flex items-center gap-2">
               <span className="w-[12px] h-[12px] border-2 border-bg-base/25 border-t-bg-base rounded-full animate-spin" />
-              Enviando...
+              {activeTab === 'url' ? 'Buscando...' : 'Enviando...'}
             </span>
           ) : (
-            'Extrair Design System'
+            activeTab === 'url' ? 'Extrair de URL' : 'Extrair de ZIP'
           )}
         </button>
       </div>

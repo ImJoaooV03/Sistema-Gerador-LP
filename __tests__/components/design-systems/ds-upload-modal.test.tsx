@@ -19,10 +19,19 @@ describe('DsUploadModal', () => {
     expect(await screen.findByText(/nome é obrigatório/i)).toBeInTheDocument()
   })
 
-  it('shows validation error when no file selected', async () => {
+  it('shows validation error when no file selected (ZIP tab)', async () => {
     render(<DsUploadModal open={true} onClose={vi.fn()} onUpload={vi.fn()} />)
+    // Switch to ZIP tab first
+    fireEvent.click(screen.getByRole('button', { name: /^zip$/i }))
     fireEvent.change(screen.getByLabelText(/nome/i), { target: { value: 'Meu DS' } })
     fireEvent.click(screen.getByRole('button', { name: /extrair/i }))
     expect(await screen.findByText(/selecione um arquivo/i)).toBeInTheDocument()
+  })
+
+  it('shows URL validation error when URL is empty (URL tab)', async () => {
+    render(<DsUploadModal open={true} onClose={vi.fn()} onUpload={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(/nome/i), { target: { value: 'Meu DS' } })
+    fireEvent.click(screen.getByRole('button', { name: /extrair/i }))
+    expect(await screen.findByText(/url é obrigatória/i)).toBeInTheDocument()
   })
 })
