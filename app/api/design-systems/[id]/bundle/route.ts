@@ -48,7 +48,7 @@ export async function GET(
   const combined = await injectDsHtml(zip, ds.ds_html)
 
   const slug = ds.nome.replace(/\s+/g, '-').toLowerCase()
-  return new NextResponse(combined, {
+  return new NextResponse(Buffer.from(combined), {
     status: 200,
     headers: {
       'Content-Type': 'application/zip',
