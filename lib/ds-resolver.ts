@@ -162,6 +162,55 @@ export async function buildAnalysisHtml(zip: JSZip): Promise<string> {
   return html
 }
 
+/**
+ * Build analysis HTML from a public URL for Claude input.
+ * - Fetches the page with browser-like headers
+ * - Inlines all linked CSS files as <style> blocks
+ * - Removes external <script src> tags (not needed for design analysis)
+ * - Keeps inline <style> blocks and Google Fonts <link> tags unchanged
+ * - Throws if the page returns a non-2xx status
+ */
+export async function buildAnalysisHtmlFromUrl(url: string): Promise<string> {
+  const origin = new URL(url).origin
+
+  const pageRes = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.5',
+    },
+  })
+
+  if (!pageRes.ok) {
+    throw new Error(`Página retornou ${pageRes.status}. Verifique se a URL está correta e acessível.`)
+  }
+
+  let html = await pageRes.text()
+
+  // Inline linked CSS files
+  const linkRe = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>|<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi
+  const matches = [...html.matchAll(linkRe)]
+  for (const match of matches) {
+    const href = match[1] || match[2]
+    if (!href) continue
+    try {
+      const cssUrl = href.startsWith('http') ? href : `${origin}${href.startsWith('/') ? '' : '/'}${href}`
+      const cssRes = await fetch(cssUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+      if (cssRes.ok) {
+        const cssContent = await cssRes.text()
+        html = html.replace(match[0], `<style>${cssContent}</style>`)
+      }
+    } catch {
+      // leave the original link tag — non-fatal
+    }
+  }
+
+  // Remove external <script src> tags — not needed for design analysis
+  html = html.replace(/<script[^>]+src=["'][^"']+["'][^>]*><\/script>/gi, '')
+
+  return html
+}
+
 /** Build a fully resolved, self-contained HTML (for bundle download — not for Claude input) */
 export async function buildResolvedHtml(zip: JSZip): Promise<string> {
   const indexFile = zip.file('index.html')
