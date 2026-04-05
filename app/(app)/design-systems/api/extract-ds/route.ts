@@ -29,8 +29,10 @@ export async function POST(req: NextRequest) {
     if (!file || !nome) {
       return NextResponse.json({ error: 'file e nome são obrigatórios' }, { status: 400 })
     }
-    if (file.size > 50 * 1024 * 1024) {
-      return NextResponse.json({ error: 'Arquivo muito grande (máx 50MB)' }, { status: 400 })
+    // 4MB hard limit — Vercel serverless functions cap the request body at ~4.5MB.
+    // Failing here gives a clear JSON error instead of a raw 413 from Vercel's edge.
+    if (file.size > 4 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Arquivo muito grande (máx 4MB). Comprime o ZIP ou remove imagens desnecessárias.' }, { status: 413 })
     }
 
     const buffer = await file.arrayBuffer()

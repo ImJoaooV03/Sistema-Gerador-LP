@@ -103,7 +103,22 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
       setProgress(30)
       const res = await fetch('/design-systems/api/extract-ds', { method: 'POST', body: fd })
       setProgress(90)
-      const json = await res.json()
+
+      // Read as text first — a 413 from Vercel is plain text, not JSON
+      const text = await res.text()
+      let json: { error?: string; id?: string; ds_html?: string } = {}
+      try {
+        json = JSON.parse(text)
+      } catch {
+        const msg = res.status === 413
+          ? 'Arquivo muito grande para o servidor (máx. 4MB). Comprime o ZIP ou remove imagens grandes.'
+          : `Erro ${res.status}: ${text.slice(0, 120)}`
+        setError(msg)
+        setLoading(false)
+        setProgress(0)
+        return
+      }
+
       if (!res.ok) { setError(json.error ?? 'Erro ao extrair'); setLoading(false); setProgress(0); return }
       setProgress(100)
       setResultId(json.id)
@@ -280,7 +295,7 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
                 Arraste o ZIP aqui ou clique para selecionar
               </p>
             )}
-            <p className="font-mono text-[10px] text-text-3 opacity-50">Máx. 50MB</p>
+            <p className="font-mono text-[10px] text-text-3 opacity-50">Máx. 4MB</p>
           </div>
         </div>
 
