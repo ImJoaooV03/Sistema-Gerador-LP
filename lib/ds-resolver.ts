@@ -189,7 +189,7 @@ export async function buildAnalysisHtmlFromUrl(url: string): Promise<string> {
 
   // Inline linked CSS files — cap each file at 40k chars to avoid bloating Claude's context
   // (Tailwind/framework utilities can be 500KB+; design tokens are always near the top)
-  const CSS_PER_FILE_LIMIT = 40_000
+  const CSS_PER_FILE_LIMIT = 20_000
   const linkRe = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>|<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi
   const matches = [...html.matchAll(linkRe)]
   for (const match of matches) {

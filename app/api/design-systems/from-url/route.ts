@@ -8,7 +8,7 @@ import { buildAnalysisHtmlFromUrl, stripMarkdown } from '@/lib/ds-resolver'
 
 export const maxDuration = 300
 
-const MAX_SOURCE = 100_000
+const MAX_SOURCE = 60_000
 const SOFT_DEADLINE_MS = 255_000 // 255s — leaves 45s buffer before the 300s hard kill
 
 function raceTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
@@ -46,7 +46,7 @@ async function runExtractionFromUrl(id: string, url: string) {
 
     const stream = anthropic.messages.stream({
       model: modeloDs,
-      max_tokens: 32000,
+      max_tokens: 16000,
       messages: [{ role: 'user', content: promptDs + analysisHtml }],
     })
     const message = await raceTimeout(
