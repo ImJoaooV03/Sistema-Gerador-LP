@@ -5,11 +5,13 @@ import Anthropic from '@anthropic-ai/sdk'
 import JSZip from 'jszip'
 import { getConfiguracoes } from '@/lib/get-configuracoes'
 import { DEFAULT_PROMPT_DS, DEFAULT_MODELO_DS } from '@/lib/defaults'
-import { buildResolvedHtml, stripMarkdown } from '@/lib/ds-resolver'
+import { buildAnalysisHtml, stripMarkdown } from '@/lib/ds-resolver'
 
 export const maxDuration = 300 // 5 minutes — required for large ZIPs + Opus
 
-const MAX_SOURCE = 120_000
+// Higher cap now safe: no base64 images in analysis HTML.
+// CSS + HTML structure for a full LP typically fits well within 200k chars.
+const MAX_SOURCE = 200_000
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -60,12 +62,15 @@ export async function POST(req: NextRequest) {
 
     await supabase.from('design_systems').update({ storage_path: `${id}.zip` }).eq('id', id)
 
-    // Build fully resolved HTML: CSS inline, JS inline, assets as base64 data URIs
-    let resolvedHtml = await buildResolvedHtml(zip)
+    // Build analysis HTML: CSS/JS embedded inline, small SVGs inlined, images left as-is.
+    // Images are intentionally NOT base64-encoded here — a 200KB image becomes 267k chars
+    // of base64 which would consume the entire context budget before Claude sees any CSS.
+    // Claude reads CSS for design tokens (colors, typography, spacing), not image pixels.
+    let analysisHtml = await buildAnalysisHtml(zip)
 
     // Cap to stay within Claude's context window
-    if (resolvedHtml.length > MAX_SOURCE) {
-      resolvedHtml = resolvedHtml.slice(0, MAX_SOURCE) + '\n\n<!-- [truncado por tamanho] -->'
+    if (analysisHtml.length > MAX_SOURCE) {
+      analysisHtml = analysisHtml.slice(0, MAX_SOURCE) + '\n\n<!-- [truncado por tamanho] -->'
     }
 
     // Call Claude
@@ -80,7 +85,7 @@ export async function POST(req: NextRequest) {
     const stream = anthropic.messages.stream({
       model: modeloDs,
       max_tokens: 32000,
-      messages: [{ role: 'user', content: promptDs + resolvedHtml }],
+      messages: [{ role: 'user', content: promptDs + analysisHtml }],
     })
     const message = await stream.finalMessage()
 

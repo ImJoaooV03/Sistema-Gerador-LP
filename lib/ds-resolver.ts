@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 
-const ASSET_SIZE_LIMIT = 500 * 1024 // 500KB
+const ASSET_SIZE_LIMIT = 500 * 1024 // 500KB — used only in buildResolvedHtml (full embed)
+const SVG_INLINE_LIMIT  = 5   * 1024 // 5KB  — SVGs smaller than this are inlined for Claude icon analysis
 
 const MIME: Record<string, string> = {
   png:   'image/png',
@@ -42,7 +43,7 @@ async function assetToDataUri(zipPath: string, zip: JSZip): Promise<string | nul
   return toBase64DataUri(bytes, mime)
 }
 
-function normalizeZipPath(href: string): string {
+export function normalizeZipPath(href: string): string {
   return href.replace(/^\//, '').split('?')[0].split('#')[0]
 }
 
@@ -103,6 +104,30 @@ export async function resolveAssetUrls(html: string, zip: JSZip): Promise<string
   return result
 }
 
+/**
+ * Inline small SVG files (<= 5KB) referenced via src="*.svg".
+ * Larger SVGs and all other assets are left as-is.
+ * Used in analysis mode so Claude can see icon shapes without blowing the context budget.
+ */
+export async function resolveSmallSvgs(html: string, zip: JSZip): Promise<string> {
+  const srcRe = /src="([^"]+\.svg)"/gi
+  const matches = [...html.matchAll(srcRe)]
+  let result = html
+  for (const match of matches) {
+    const ref = match[1]
+    if (ref.startsWith('http') || ref.startsWith('data:')) continue
+    const zipPath = normalizeZipPath(ref)
+    const file = zip.file(zipPath)
+    if (!file) continue
+    const bytes = await file.async('uint8array')
+    if (bytes.length > SVG_INLINE_LIMIT) continue
+    const dataUri = toBase64DataUri(bytes, 'image/svg+xml')
+    const escaped = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(`src="${escaped}"`, 'g'), `src="${dataUri}"`)
+  }
+  return result
+}
+
 /** Strip markdown code fences from Claude output and extract the <!DOCTYPE block */
 export function stripMarkdown(output: string): string {
   let s = output
@@ -116,7 +141,28 @@ export function stripMarkdown(output: string): string {
   return s
 }
 
-/** Build a fully resolved, self-contained HTML string from a ZIP */
+/**
+ * Build analysis HTML for Claude input:
+ * - CSS files embedded inline → Claude sees real colors, typography, animations
+ * - JS files embedded inline  → Claude sees keyframes/animation classes
+ * - Small SVGs (<5KB) inlined → Claude sees icon shapes for the icons section
+ * - Images and fonts left as-is → prevents base64 bloat from eating the context budget
+ *
+ * This is intentionally different from buildResolvedHtml.
+ * A 200KB image becomes 267k chars as base64 — one image would exceed the entire budget.
+ * Claude reads CSS for design tokens, not image pixels.
+ */
+export async function buildAnalysisHtml(zip: JSZip): Promise<string> {
+  const indexFile = zip.file('index.html')
+  if (!indexFile) throw new Error('ZIP deve conter index.html na raiz')
+  let html = await indexFile.async('string')
+  html = await resolveCssLinks(html, zip)
+  html = await resolveScriptLinks(html, zip)
+  html = await resolveSmallSvgs(html, zip)
+  return html
+}
+
+/** Build a fully resolved, self-contained HTML (for bundle download — not for Claude input) */
 export async function buildResolvedHtml(zip: JSZip): Promise<string> {
   const indexFile = zip.file('index.html')
   if (!indexFile) throw new Error('ZIP deve conter index.html na raiz')

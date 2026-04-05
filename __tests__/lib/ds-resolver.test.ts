@@ -4,6 +4,8 @@ import {
   resolveCssLinks,
   resolveScriptLinks,
   resolveAssetUrls,
+  resolveSmallSvgs,
+  buildAnalysisHtml,
   stripMarkdown,
 } from '@/lib/ds-resolver'
 
@@ -119,5 +121,76 @@ describe('stripMarkdown', () => {
   it('leaves clean HTML unchanged', () => {
     const input = '<!DOCTYPE html><html></html>'
     expect(stripMarkdown(input)).toBe('<!DOCTYPE html><html></html>')
+  })
+})
+
+describe('resolveSmallSvgs', () => {
+  it('inlines small SVG files as base64 data URIs', async () => {
+    const svgContent = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>'
+    const zip = await makeZip({ 'icons/arrow.svg': svgContent })
+    const html = '<img src="icons/arrow.svg" alt="arrow">'
+    const result = await resolveSmallSvgs(html, zip)
+    expect(result).toMatch(/src="data:image\/svg\+xml;base64,/)
+    expect(result).not.toContain('src="icons/arrow.svg"')
+  })
+
+  it('skips SVG files larger than 5KB', async () => {
+    const bigSvg = '<svg>' + 'a'.repeat(6 * 1024) + '</svg>'
+    const zip = await makeZip({ 'icons/big.svg': bigSvg })
+    const html = '<img src="icons/big.svg">'
+    const result = await resolveSmallSvgs(html, zip)
+    expect(result).toContain('src="icons/big.svg"')
+    expect(result).not.toContain('data:image/svg+xml')
+  })
+
+  it('leaves non-SVG src attributes unchanged', async () => {
+    const zip = await makeZip({})
+    const html = '<img src="images/photo.png">'
+    const result = await resolveSmallSvgs(html, zip)
+    expect(result).toContain('src="images/photo.png"')
+  })
+
+  it('leaves external SVG URLs unchanged', async () => {
+    const zip = await makeZip({})
+    const html = '<img src="https://cdn.example.com/icon.svg">'
+    const result = await resolveSmallSvgs(html, zip)
+    expect(result).toContain('src="https://cdn.example.com/icon.svg"')
+  })
+})
+
+describe('buildAnalysisHtml', () => {
+  it('embeds CSS inline but leaves image src as-is', async () => {
+    const zip = await makeZip({
+      'index.html': '<html><head><link rel="stylesheet" href="styles.css"></head><body><img src="hero.jpg"></body></html>',
+      'styles.css': 'body { background: #ff0000; }',
+    })
+    const result = await buildAnalysisHtml(zip)
+    expect(result).toContain('<style>body { background: #ff0000; }</style>')
+    expect(result).toContain('src="hero.jpg"')
+    expect(result).not.toContain('data:image/jpeg')
+  })
+
+  it('embeds JS inline', async () => {
+    const zip = await makeZip({
+      'index.html': '<html><body><script src="app.js"></script></body></html>',
+      'app.js': 'console.log("hello")',
+    })
+    const result = await buildAnalysisHtml(zip)
+    expect(result).toContain('<script>console.log("hello")</script>')
+  })
+
+  it('inlines small SVGs for icon analysis', async () => {
+    const svgContent = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>'
+    const zip = await makeZip({
+      'index.html': '<html><body><img src="icon.svg"></body></html>',
+      'icon.svg': svgContent,
+    })
+    const result = await buildAnalysisHtml(zip)
+    expect(result).toMatch(/data:image\/svg\+xml;base64,/)
+  })
+
+  it('throws if index.html is missing from zip', async () => {
+    const zip = await makeZip({ 'styles.css': 'body {}' })
+    await expect(buildAnalysisHtml(zip)).rejects.toThrow('ZIP deve conter index.html na raiz')
   })
 })
