@@ -51,6 +51,11 @@ vi.mock('@/lib/get-configuracoes', () => ({
   }),
 }))
 
+vi.mock('next/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/server')>()
+  return { ...actual, after: vi.fn() } // no-op — async background work is tested separately
+})
+
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn().mockImplementation(function () {
     return {
@@ -95,28 +100,26 @@ describe('POST /api/design-systems/[id]/extract', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns ds_html and status done on success', async () => {
+  it('returns 202 and processing status immediately', async () => {
     const res = await POST(makeReq('ds-123'), { params: Promise.resolve({ id: 'ds-123' }) })
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(202)
     const json = await res.json()
-    expect(json.status).toBe('done')
-    expect(json.ds_html).toContain('<!DOCTYPE html>')
+    expect(json.status).toBe('processing')
+    expect(json.id).toBe('ds-123')
   })
 
-  it('returns 500 when storage download fails', async () => {
-    mockStorageDownload.mockResolvedValueOnce({ data: null, error: { message: 'download failed' } })
+  it('returns 500 when storage download fails (sync check — 404 for missing record)', async () => {
+    mockSelectDs.mockResolvedValueOnce({ data: null, error: { message: 'not found' } })
     const res = await POST(makeReq('ds-123'), { params: Promise.resolve({ id: 'ds-123' }) })
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(404)
   })
 
-  it('strips markdown fences from Claude output', async () => {
+  it('returns 202 regardless of Claude output (processing is async)', async () => {
     mockFinalMessage.mockResolvedValueOnce({
       content: [{ type: 'text', text: '```html\n<!DOCTYPE html><html><body>DS</body></html>\n```' }],
       stop_reason: 'end_turn',
     })
     const res = await POST(makeReq('ds-123'), { params: Promise.resolve({ id: 'ds-123' }) })
-    const json = await res.json()
-    expect(json.ds_html).not.toContain('```')
-    expect(json.ds_html).toContain('<!DOCTYPE html>')
+    expect(res.status).toBe(202)
   })
 })

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Anthropic from '@anthropic-ai/sdk'
@@ -11,35 +11,14 @@ export const maxDuration = 300
 
 const MAX_SOURCE = 200_000
 
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return new NextResponse('Unauthorized', { status: 401 })
-
-  // Fetch record (RLS ensures it belongs to the authed user)
-  const { data: ds, error: fetchErr } = await supabase
-    .from('design_systems')
-    .select('id, nome, storage_path, status')
-    .eq('id', id)
-    .single()
-
-  if (fetchErr || !ds) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  }
+async function runExtraction(id: string, storagePath: string) {
+  const admin = createAdminClient()
 
   try {
-    await supabase.from('design_systems').update({ status: 'processing' }).eq('id', id)
-
-    // Download ZIP from Storage (admin client bypasses RLS)
-    const admin = createAdminClient()
+    // Download ZIP from Storage
     const { data: zipBlob, error: dlErr } = await admin.storage
       .from('design-systems')
-      .download(ds.storage_path)
+      .download(storagePath)
 
     if (dlErr || !zipBlob) throw new Error(`Storage download: ${dlErr?.message ?? 'unknown'}`)
 
@@ -84,16 +63,41 @@ export async function POST(
       }
     }
 
-    await supabase
-      .from('design_systems')
-      .update({ ds_html: dsHtml, status: 'done' })
-      .eq('id', id)
-
-    return NextResponse.json({ id, status: 'done', ds_html: dsHtml })
+    await admin.from('design_systems').update({ ds_html: dsHtml, status: 'done' }).eq('id', id)
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    await supabase.from('design_systems').update({ status: 'error', error_msg: msg }).eq('id', id)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    await admin.from('design_systems').update({ status: 'error', error_msg: msg }).eq('id', id)
   }
+}
+
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new NextResponse('Unauthorized', { status: 401 })
+
+  // Fetch record (RLS ensures it belongs to the authed user)
+  const { data: ds, error: fetchErr } = await supabase
+    .from('design_systems')
+    .select('id, nome, storage_path, status')
+    .eq('id', id)
+    .single()
+
+  if (fetchErr || !ds) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // Mark as processing immediately
+  await supabase.from('design_systems').update({ status: 'processing' }).eq('id', id)
+
+  // Run Claude extraction after the response is sent (avoids gateway timeout)
+  after(() => runExtraction(id, ds.storage_path))
+
+  // Return 202 — client should poll /api/design-systems/[id]/status
+  return NextResponse.json({ id, status: 'processing' }, { status: 202 })
 }

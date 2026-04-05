@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Modal } from '@/components/shared/modal'
 
 type DsUploadModalProps = {
@@ -9,7 +9,7 @@ type DsUploadModalProps = {
   onUpload: (id: string, dsHtml: string) => void
 }
 
-type Step = 'form' | 'success'
+type Step = 'form' | 'processing' | 'success'
 
 const inputClass =
   'w-full h-11 bg-elevated border border-border-default rounded-lg px-4 text-[13px] text-text-1 placeholder:text-text-3 font-mono outline-none transition-all duration-200 focus:border-accent/50 focus:shadow-[0_0_0_3px_rgba(240,180,41,0.09)]'
@@ -27,7 +27,55 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
   const [resultId,   setResultId]   = useState('')
   const [resultHtml, setResultHtml] = useState('')
   const [resultNome, setResultNome] = useState('')
+  const [processingId,   setProcessingId]   = useState('')
+  const [processingNome, setProcessingNome] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // ── Polling when in processing step ────────────────────────────────────────
+  useEffect(() => {
+    if (step !== 'processing' || !processingId) return
+
+    let cancelled = false
+    const POLL_INTERVAL = 4000
+    const MAX_WAIT = 8 * 60 * 1000 // 8 minutes
+    const startedAt = Date.now()
+
+    async function poll() {
+      if (cancelled) return
+      if (Date.now() - startedAt > MAX_WAIT) {
+        setError('Tempo limite excedido. O Claude pode estar sobrecarregado — tente novamente.')
+        setStep('form')
+        setLoading(false)
+        return
+      }
+
+      try {
+        const res = await fetch(`/api/design-systems/${processingId}/status`)
+        if (!res.ok) { setTimeout(poll, POLL_INTERVAL); return }
+        const json: { status: string; ds_html?: string | null; error_msg?: string | null } = await res.json()
+
+        if (json.status === 'done') {
+          setResultId(processingId)
+          setResultHtml(json.ds_html ?? '')
+          setResultNome(processingNome)
+          setStep('success')
+          setLoading(false)
+        } else if (json.status === 'error') {
+          setError(json.error_msg ?? 'Erro ao extrair design system')
+          setStep('form')
+          setLoading(false)
+        } else {
+          // still processing — poll again
+          setTimeout(poll, POLL_INTERVAL)
+        }
+      } catch {
+        if (!cancelled) setTimeout(poll, POLL_INTERVAL)
+      }
+    }
+
+    const timer = setTimeout(poll, POLL_INTERVAL)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [step, processingId, processingNome])
 
   function reset() {
     setStep('form')
@@ -40,6 +88,8 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
     setResultId('')
     setResultHtml('')
     setResultNome('')
+    setProcessingId('')
+    setProcessingNome('')
   }
 
   function handleClose() {
@@ -131,32 +181,54 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
         xhr.send(file)
       })
 
-      setProgress(75)
-
-      // Step 3: trigger Claude extraction (server downloads ZIP from storage)
-      const extractRes = await fetch(`/api/design-systems/${dsId}/extract`, { method: 'POST' })
       setProgress(90)
 
-      const extractText = await extractRes.text()
-      let extractJson: { error?: string; id?: string; ds_html?: string } = {}
-      try { extractJson = JSON.parse(extractText) } catch {
-        setError(`Erro ${extractRes.status}: ${extractText.slice(0, 120)}`)
+      // Step 3: trigger Claude extraction — returns 202 immediately
+      const extractRes = await fetch(`/api/design-systems/${dsId}/extract`, { method: 'POST' })
+      if (!extractRes.ok) {
+        const t = await extractRes.text()
+        let j: { error?: string } = {}
+        try { j = JSON.parse(t) } catch { /* ignore */ }
+        setError(j.error ?? `Erro ${extractRes.status}`)
         setLoading(false); setProgress(0); return
       }
-      if (!extractRes.ok) { setError(extractJson.error ?? 'Erro ao extrair'); setLoading(false); setProgress(0); return }
 
       setProgress(100)
-      setResultId(extractJson.id ?? dsId)
-      setResultHtml(extractJson.ds_html ?? '')
-      setResultNome(nome.trim())
-      setStep('success')
-      setLoading(false)
+
+      // Switch to polling step
+      setProcessingId(dsId)
+      setProcessingNome(nome.trim())
+      setStep('processing')
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado')
       setLoading(false)
       setProgress(0)
     }
+  }
+
+  // ── PROCESSING STEP ─────────────────────────────────────────────────────────
+  if (step === 'processing') {
+    return (
+      <Modal open={open} onClose={() => { /* prevent accidental close */ }} className="max-w-[420px] mx-4">
+        <div className="px-6 py-10 flex flex-col items-center gap-5">
+          {/* Spinner */}
+          <div className="relative w-14 h-14">
+            <div className="absolute inset-0 rounded-full border-2 border-border-default" />
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-accent animate-spin" />
+          </div>
+          <div className="text-center">
+            <h2 className="font-syne font-bold text-[15px] text-text-1">{processingNome}</h2>
+            <p className="font-mono text-[10px] text-accent uppercase tracking-[1.5px] mt-1">
+              Claude está analisando o design system
+            </p>
+            <p className="font-mono text-[10px] text-text-3 mt-2">
+              Isso pode levar alguns minutos...
+            </p>
+          </div>
+        </div>
+      </Modal>
+    )
   }
 
   // ── SUCCESS STEP ────────────────────────────────────────────────────────────
@@ -366,7 +438,7 @@ export function DsUploadModal({ open, onClose, onUpload }: DsUploadModalProps) {
           {loading ? (
             <span className="flex items-center gap-2">
               <span className="w-[12px] h-[12px] border-2 border-bg-base/25 border-t-bg-base rounded-full animate-spin" />
-              Extraindo...
+              Enviando...
             </span>
           ) : (
             'Extrair Design System'
